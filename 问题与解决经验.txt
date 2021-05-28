@@ -1,0 +1,18 @@
+2021-05-27
+1：在初步实现支付服务提供者时 PaymentMain8001 发现没有引入Eureka, 启动的时候会去Eureka 获取注册的服务信息
+   导致单个的springBoot项目启动失败
+
+分析原因: 可能在某个地方不经意之间引入了Eureka 模块。
+
+       <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!-- 包含了sleuth+zipkin -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-zipkin</artifactId>
+        </dependency>
+
+ 新的方式没有 引入  netflix-eureka-client
