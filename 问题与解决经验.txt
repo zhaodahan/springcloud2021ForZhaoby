@@ -16,3 +16,9 @@
         </dependency>
 
  新的方式没有 引入  netflix-eureka-client
+
+2021-5-30
+2: 新建Module
+   pom.xml存在下划线 ----解决方案： maven-ingnore file  去掉勾选
+   idea 解决Springboot项目yml配置文件图标不显示绿叶子   ----pom 文件没有重新引入。
+
