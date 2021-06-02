@@ -1,0 +1,13 @@
+在服务：cloud-consumer-order80 和cloud-provider-payment8001 中
+我们都会使用到
+entities
+    -CommonResult
+    -Payment
+这些公共的类，在所有服务中都会用到，我们每个服务都单独建一套，明显冗余了
+
+可想到的优化就是我们将这些公共的抽取出来，打成jar 包，供大家调用
+
+打成jar 包
+     maven clean  install
+     其他服务引用这个jar包
+
