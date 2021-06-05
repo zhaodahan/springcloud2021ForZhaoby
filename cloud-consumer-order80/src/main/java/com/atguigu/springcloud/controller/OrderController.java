@@ -17,7 +17,8 @@ public class OrderController {
     private RestTemplate restTemplate; //读操作用get, 写操作用post
 
     // 先写死payment服务的请求地址
-    public static final String PAYMENT_URL = "http://localhost:8001";
+    // public static final String PAYMENT_URL = "http://localhost:8001";
+    public static final String PAYMENT_URL = "http://CLOUD-PAYMENT-SERVICE"; //加入Eureka后通过注册中心里的服务名来查找
 
     //    @PostMapping("/consumer/payment/create")
     @GetMapping("/consumer/payment/create")
@@ -27,6 +28,6 @@ public class OrderController {
 
     @GetMapping("/consumer/payment/get/{id}")
     public CommonResult<Payment> getPayment(@PathVariable("id") Long id) {
-        return restTemplate.getForObject(PAYMENT_URL+"/payment/get/"+id,CommonResult.class);
+        return restTemplate.getForObject(PAYMENT_URL + "/payment/get/" + id, CommonResult.class);
     }
 }
