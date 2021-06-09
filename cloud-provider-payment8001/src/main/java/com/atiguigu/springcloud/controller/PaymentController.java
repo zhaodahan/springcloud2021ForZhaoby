@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 //我们想答应日志，因为引入了lombok ，可以使用@Slf4j 注解 来简化引入log 编码
@@ -37,8 +38,9 @@ public class PaymentController {
     }
 
     @GetMapping(value = "/payment/get/{id}")
-    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) throws InterruptedException {
         log.info("查询：{}", id);
+        TimeUnit.SECONDS.sleep(3);
         Payment payment = paymentService.getPaymentById(id);
         log.info("查询出结果：{}", JSON.toJSONString(payment));
 
