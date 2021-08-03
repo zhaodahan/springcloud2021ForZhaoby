@@ -1,0 +1,18 @@
+这里是准备使用springCloudAlibaba
+
+ 使用nacos 作为 服务注册中心
+先自己摸索一便
+
+cloudalibaba-consumer-order801
+1:消费者首先需要注册到nacos中去
+2: 思考如何调用生产者
+方案使用fegin
+先把controller 整出来
+
+先分别测试调用
+
+
+再看着脑图弄一遍
+cloud-consumerAlibaba-order802
+最后再看视频
+cloud-consumerAlibaba-order803
