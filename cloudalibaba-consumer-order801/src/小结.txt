@@ -21,5 +21,84 @@ http://localhost:8001//consumer/payment/get/2
 
 再看着脑图弄一遍
 cloud-consumerAlibaba-order802
+
+===========================================脑图步骤总结：===================
+1：pom 引入
+主要两个；
+spring cloud alibaba 整体jar
+<!--spring cloud alibaba 2.1.0.RELEASE-->
+<dependency>
+  <groupId>com.alibaba.cloud</groupId>
+  <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+  <version>2.1.0.RELEASE</version>
+  <type>pom</type>
+  <scope>import</scope>
+</dependency>
+
+引入nacos  用于nacos 服务注册发现
+  <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+    </dependency>
+
+还有就是监控jar
+  <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+2：yml 配置文件配置
+除了配置基本的端口和服务名
+这个yml 主要配置的是nacos的注册地址
+spring:
+  application:
+    name: XXXX
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848 #配置Nacos地址
+
+还有就是springboot 的监控管理需要开启
+(exposure 暴露所有健康检查的接口)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+
+3：主启动类上除了正常的boot 应用注解，还要加上@EnableDiscoveryClient 标识该服务启用了服务发现功能
+springboot 在启动的时候才会去加载相应的配置
+@SpringBootApplication
+@EnableDiscoveryClient
+
+4： 实现业务类
+
+5： 服务消费者上面步骤相同， 消费者也是一个微服务 需要注册到nacos 中去
+不过，如果要使用Fegin 去调用生产者服务
+pom 中需要引入 openfeign
+  <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+  </dependency>
+
+启动类中需要加上@EnableFeignClients 注解，表明这是一个Fegin 调用客户端
+@SpringBootApplication
+@EnableDiscoveryClient
+@EnableFeignClients
+
+业务调用服务处需要 明确注解声明
+@Component
+@FeignClient(value = "nacos-payment-provider")
+public interface PaymentFeignService {
+
+===========================================脑图步骤总结：end===================
 最后再看视频
 cloud-consumerAlibaba-order803
+
+
+
+下一步摸索 nacos 如何作为服务注册中心

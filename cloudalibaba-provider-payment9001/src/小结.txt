@@ -1,3 +1,22 @@
-这里是准备使用springCloudAlibaba
+踩坑小结
 
-1； 使用nacos 作为 服务注册中心
+如果springboot服务中不想使用数据库
+在pom 中就不用导入
+     <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid-spring-boot-starter</artifactId>
+            <version>1.1.10</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/mysql/mysql-connector-java -->
+      <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-jdbc -->
+       <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+如果导入了数据库连接池 如： druid  springboot启动的时候会去配置文件中读取数据库配置

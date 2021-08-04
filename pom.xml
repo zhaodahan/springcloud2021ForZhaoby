@@ -22,7 +22,6 @@
       <module>cloud-consumerconsul-order80</module>
       <module>cloud-consumer-feign-order80</module>
       <module>cloudalibaba-provider-payment9001</module>
-      <module>cloud-consumerAlibaba-order801</module>
       <module>cloudalibaba-consumer-order801</module>
   </modules>
   <packaging>pom</packaging>
