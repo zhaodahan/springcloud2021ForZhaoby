@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: nacos-payment-provider
+    name: nacos-order-consumer
 
 #    猜想即使是消费者也需要先注册到那nacos 注册中心处
   cloud:

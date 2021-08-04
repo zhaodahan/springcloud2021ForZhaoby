@@ -10,7 +10,14 @@ cloudalibaba-consumer-order801
 先把controller 整出来
 
 先分别测试调用
+验证生产者
+http://localhost:8848/nacos
 
+http://localhost:9001//payment/nacos/1
+验证消费者调用生产者
+http://localhost:8001//consumer/payment/get/2
+
+成功了
 
 再看着脑图弄一遍
 cloud-consumerAlibaba-order802
