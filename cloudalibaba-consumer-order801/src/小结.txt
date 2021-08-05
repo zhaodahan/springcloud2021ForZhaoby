@@ -98,7 +98,97 @@ public interface PaymentFeignService {
 ===========================================脑图步骤总结：end===================
 最后再看视频
 cloud-consumerAlibaba-order803
+===========================================视屏总结：===================
+1： nacos 自带负载均衡
+因为spring-cloud-starter-alibaba-nacos-discovery  中阿里集成了ribbon
+ribbon负责负载均衡
+
+
+===========================================视屏总结：end=================
+
+
+下一步摸索 nacos 如何作为配置服务配置中
+
+1： 自己摸索，思考原理
+========================================================================================================================
+作为服务配置中心
+1：远程肯定需要存储我们的配置文件
+本地服务是肯定是作为客户端， nacos 作为服务端。 只能将配置信息存储在nacos 中
+如何配置，参考官网
+https://spring-cloud-alibaba-group.github.io/github-pages/greenwich/spring-cloud-alibaba.html#_how_to_introduce_nacos_config_for_configuration
+2：文件需要去远程拉去配置信息
+
+肯定存在3步
+
+1： 引入pom包
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+</dependency>
+
+(注意：nacos-config 要放在 nacos-discovery 前， 否则IDEA 会报错)
+
+2；nacos  管理台中配置配置文件
+
+nacos 配置管理台上建立文件Data ID 使用"服务名.yml" 分组使用默认分组
+
+
+3： 配置文件配置引入配置文件
+需要在 bootstrap.yml 中配置 Nacos 服务器的地址和该服务对应使用的哪个文件
+需要新建一个bootstrap.yml 文件
+spring:
+  application:
+    name: nacos-payment-provider
+  cloud:
+    nacos:
+      config:
+        server-addr:127.0.0.1:8848
+这里默认指定的配置为 GROUP为DEFAULT_GROUP  DataId为`spring.application.name` 配置结合文件扩展名（配置格式默认使用properties）
+
+
+4： 业务代码使用配置文件中的信息
+
+5: 测试结果： 发现无法启动生产者服务
+可能原因， 在上面没有指定具体使用哪个配置文件
+还有一个可能，nacos 中配置文件格式没有yml ,只有yaml 。
+我们强加的配置文件后缀是yml
+
+6: 修改配置文件后缀
+修改后还是报错
+Caused by: com.alibaba.nacos.api.exception.NacosException: endpoint is blank
+查询发现是：源代码为判断了 serverAddrStr为空，然后endpoint 为空 所以抛出了异常。
+检查了nacos config 配置的bootstarp.yml 发现配置文件配置的有问题
+(这里还是需要注意)
+
+bootstarp.yml 内容最终修改为
+spring:
+  application:
+    name: nacos-payment-provider
+  cloud:
+    nacos:
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
+
+修改后发现启动成功，测试读取配置文件中的内容也是成功的
+
+================================================================================================
+2： 对照脑图自己操作
+
+3： 观看视屏总结
 
 
 
-下一步摸索 nacos 如何作为服务注册中心
+
+
+
+
+
+
+
+
+
+
+
+
+
