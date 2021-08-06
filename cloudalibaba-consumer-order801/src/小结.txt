@@ -174,12 +174,47 @@ spring:
 
 ================================================================================================
 2： 对照脑图自己操作
+总结脑图步骤
+1； pom 中引入nacos-config. 启用nacos 作为配置中心的功能
 
+2：配置yml  bootstarp.yml (本地) + application.yml (远程/本地)
+为什么需要两个配置文件
+因为 nacos 和是springcloud 一样在项目初始化启动的时候需要先从远程拉取配置才能正常启动。
+bootstarp.yml中配置的就是从哪个远程拉取哪个配置
+springboot中配置文件的加载顺序 bootstarp.yml > application.yml
+bootstarp.yml 也可以比作另外一种形式的 application.yml
+
+bootstrap.yml 中定位nacos 中配置文件的规则
+dataId 的默认格式是： ${prefix}-${spring.profiles.active}.${file-extension}
+prefix 默认为 spring.application.name 的值，也可以通过配置项 spring.cloud.nacos.config.prefix来配置。
+spring.profiles.active 即为当前环境对应的 profile
+file-exetension 为配置内容的数据格式，可以通过配置项 spring.cloud.nacos.config.file-extension 来配置。
+目前只支持 properties 和 yaml 类型。
+
+
+3: nacos 中配置自动刷新
+官网文档说支持自动刷新，不过是在版本 cloud greenwich.  这里是用得是Hoxton 。  albaba 版本2.1.2 。
+
+这里版本比较低，需要自己加注解去刷新配置
+使用方法： 在业务controller 中加上@RefreshScope 注解来实现配置自动更新
+//https://nacos.io/zh-cn/docs/quick-start-spring-cloud.html
+（经测试，确实能够刷新配置）
+
+
+
+
+================================================================================================
 3： 观看视屏总结
 
+1： 以前我们完成配置的自动刷新，需要结合springcloud config + bus . 现在我们将其解耦，直接全部整合进nacos. 使用nacos 来独立完成
+    我们将配置文件的远程从github 迁移到nacos 上了
 
+2；  bootstarp.yml 共性
+     application.yml 个性   常在 application.yml 中指定开发环境  spring.profiles.active 用以切换不同环境的配置文件
 
+3：@RefreshScope 注解的作用是，当远程配置发生变化，通知到客户端服务的时候，可以刷新服务应用去重新读取新的配置的值
 
+================================================================================================
 
 
 
