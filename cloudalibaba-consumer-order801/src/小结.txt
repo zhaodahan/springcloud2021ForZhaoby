@@ -277,6 +277,8 @@ db.password=123456
 sentinel 是什么？ 流量控制，服务降级
 核心作用是用于实现熔断和限流。 监控和保护我们的微服务。
 分布式系统的流量防卫兵。 =》hystrix 的阿里版
+他与hystrix 不同之处(优势)在于 hystrix 只能针对一个具体的微服务做服务降级和熔断。 (高并发下可以将某个服务降级关闭)
+而sentinel可以针对某个请求配置对应的服务限流和降级规则。
 
 理论原理：
 1:Sentinel的核心是以“流量”为切入点。在流量控制、断路、负载保护等多个领域开展工作，保障服务可靠性
@@ -359,6 +361,111 @@ sentinel 流控规则
  排队等待： 必须设置QPS .让超过阈值的请求排队，匀速通过（控制请求通过的间隔时间，漏桶算法）
           应用场景，系统每秒只能处理n个请求，多余过来的请求就排队。超时就重试。优先确保系统的稳定
           即请求过来了既没有将系统冲跨，又没有拒绝(双赢)。
+
+=========================================================================
+sentinel 降级 类似于Hystrix的服务熔断
+
+sentinel 熔断降级会在调用链路中某个资源出现不稳定状态是(调用超时，异常比例升高)，
+对资源的调用进行限制，让请求快速失败，避免影响其他资源调用，而导致级联错误。
+
+当资源被降级后，在接下来的降级时间窗口内，对该资源的调用都是自动熔断。 (默认是快速失败，抛出异常)
+sentinel 的熔断与hystrix的熔断不同是，sentinel的熔断“不存在半开” 状态，要么是熔断，要么是正常调用
+半开：就是系统会自动的去检测是否还存在异常请求调用，如果不存在了，就关闭断路器，恢复使用
+sentinel的熔断恢复是：是在熔断窗口时间内，一直处于自动熔断，而过了时间窗口自动恢复，如果接下来的请求调用仍然处于不稳定状态，继续进入熔断。
+
+三种降级策略：https://github.com/alibaba/Sentinel/wiki/%E7%86%94%E6%96%AD%E9%99%8D%E7%BA%A7
+慢调用比例 ：顾明思意，就是在单位时间内统计慢调用的比例，超过阈值就进行熔断。
+          什么样的被定义为慢调用：需要设置最大 RT (最大相应时间)，超过就是慢调用。
+          慢调用比例：就是在单位请求时间内，慢调用所占的比例。
+          统计 秒级
+
+异常比例 (统计 秒级)
+
+异常数 (统计 分钟级)，如果时间窗口<60 秒 (统计的单位时间)，在系统还未恢复，就中断了熔断，则下一次仍然可能进入熔断
+      所以这里劲量将时间窗口时间设置时长超过60 秒
+
+这里的时间窗口就是用来留给系统恢复的时间
+熔断的目的是为了保护系统安全
+
+=========================================================================
+热点key限流 (他也是限流的一种)
+
+什么是热点：即访问频率高的数据。 有时候我们需要统计访问最多的topK 数据，并对其限流
+我们可以根据请求带有的参数进行限流。
+
+热点key限流： 就是针对热点参数限流。他会统计传入参数中的热点参数，并根据配置的限流阈值与模式，对包含热点参数的资源调用进行限流。
+举例： http://localhost:9001//payment/nacos?p=key  针对请求中的参数P 做限流，只要参数中带有P 就会触发限流规则
+      资源名是请求， 参数索引是对应的请求中的参数 (目前似乎只对gei 请求有效。 post 请求可能无法抓取到具体参数)
+
+参数例外项： 举例: 我们针对P 的QPS 限流是10 ，但是我们可以配置当P=5 时限流规则为QPS=100;
+
+=========================================================================
+系统自适应限流
+从整体维度对应用入口流量进行控制。 (之前的sentinel限流规则只能针对单个请求，但是每个都配置一个限流规则，十分麻烦，现在就有了一个整体的维度来补充控制)
+之前是微服务内部 具体每个请求限流，现在是微服务外部一个整体来进行配置限流。
+结合应用的 Load(自适应)、CPU 使用率、总体平均 RT、入口 QPS 和并发线程数等几个维度的监控指标，通过自适应的流控策略，
+让系统的入口流量和系统的负载达到一个平衡，让系统尽可能跑在最大吞吐量的同时保证系统整体的稳定性。
+
+（正因为是整体维度，是大门级别，配置小了就很危险，实用性有待考量）
+
+=========================================================================
+@SentinelResource 注解 (和@HystrixConmand 类似)
+问题1: 这个注解有什么用？
+用来将服务中的接口定义为sentinel的监控资源。
+    @GetMapping(value = "/payment/nacos/{id}")
+    @SentinelResource("/payment",blockHandler  = "handleException")
+    public String getPayment(@PathVariable("id") Integer id)
+在sentinel的控制台簇点链路中我们可以看到两个资源 /payment/nacos/{id} 和/payment
+他们都可以作为 针对该接口的资源来配置限流规则
+那他们的不同之处在哪？
+1: 如果使用sentinel自动根据路径生成的资源来配置限流规则，我们没法使用自定的限流异常。
+   而 @SentinelResource("/payment",blockHandler  = "handleException") handleException 就是我们自定义的限流返回
+   其中blockHandlerClass 属性还可以指定 自定义异常的方法所在的类
+
+2： BlockException 只能补货限流，如果是其他运行时异常，需要fallback 属性
+
+问题2； 如何使用
+  @GetMapping(value = "/payment/nacos/{id}")
+    @SentinelResource(value = "/payment",blockHandler  = "handleException")
+    public String getPayment(@PathVariable("id") Integer id)
+    {
+        return "nacos registry, serverPort: "+ serverPort+"\t id"+id+"\t yml file content"+testFileContent;
+    }
+
+
+    public String handleException(BlockException exception)
+    {
+        return "自定义限流handleException";
+    }
+
+3： 使用时出现问题： 限流并没有触发我们自定义的限流规则，而是抛出了异常Caused by: com.alibaba.csp.sentinel.slots.block.flow.FlowException'
+
+是什么原因？ 如何解决
+经过加日志验证是，压根没有进入我们自定义的异常方法。说明程序压根没有找到该方法
+错在哪了？对照写法，猜测是自定义异常方法写的不对，应该将参数都带上
+public String handleException(@PathVariable("id") Integer id,BlockException exception)
+
+修改之后发现自定义异常出现了，就是这个问题，如果方法中带有参数。 自定方法参数要一致，且要带上BlockException exception
+
+正确用法：
+@GetMapping(value = "/payment/nacos/{id}")
+    @SentinelResource(value = "payment",blockHandler  = "handleException")
+    public String getPayment(@PathVariable("id") Integer id)
+    {
+        return "nacos registry, serverPort: "+ serverPort+"\t id"+id+"\t yml file content"+testFileContent;
+    }
+
+
+    public String handleException(@PathVariable("id") Integer id,BlockException exception)
+    {
+        System.out.println("进入了自定义的限流异常方法");
+        return "自定义限流handleException";
+    }
+
+
+
+===========================================================================
+服务熔断
 
 
 ===========================================================================
