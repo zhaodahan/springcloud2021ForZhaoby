@@ -25,6 +25,20 @@ spring:
       transport:
         port: 8719
         dashboard: localhost:8080
+      datasource:
+         ds1:
+           nacos:
+             server-addr: localhost:8848
+             dataId: nacos-payment-provider
+             groupId: DEFAULT_GROUP
+             data-type: json
+             rule-type: degrade
+
+#  spring.cloud.sentinel.datasource.ds2.nacos.server-addr=localhost:8848
+#  spring.cloud.sentinel.datasource.ds2.nacos.data-id=sentinel
+#  spring.cloud.sentinel.datasource.ds2.nacos.group-id=DEFAULT_GROUP
+#  spring.cloud.sentinel.datasource.ds2.nacos.data-type=json
+#  spring.cloud.sentinel.datasource.ds2.nacos.rule-type=degrade
 
 management:
   endpoints:

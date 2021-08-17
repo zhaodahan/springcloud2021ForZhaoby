@@ -422,7 +422,14 @@ sentinel的熔断恢复是：是在熔断窗口时间内，一直处于自动熔
    而 @SentinelResource("/payment",blockHandler  = "handleException") handleException 就是我们自定义的限流返回
    其中blockHandlerClass 属性还可以指定 自定义异常的方法所在的类
 
-2： BlockException 只能补货限流，如果是其他运行时异常，需要fallback 属性
+2： BlockException 只能补货限流，如果是其他运行时异常，需要fallback 属性  (两者各司其职)，fallback 需要多声明Throwable 异常
+当限流和异常同时都满足时， 具体时限流还是业务异常？
+限流的优先级更高。
+为什么？因为作为系统来说给用户展示友好信息肯定优于直接展示个报错。
+
+3：假如某些异常不需要兜底方法fallback ,可以使用属性exceptionsToIgnore 用于指定异常不走兜底方法
+exceptionsToIgnore = ArithmeticException.class
+接显示错误信息给前台页面。
 
 问题2； 如何使用
   @GetMapping(value = "/payment/nacos/{id}")
@@ -466,11 +473,112 @@ public String handleException(@PathVariable("id") Integer id,BlockException exce
 
 ===========================================================================
 服务熔断
+sentinel整合ribbon+openFeign+fallback
 
+sentinel使用openFeign 一定要在配置中开启sentinel对feign 的支持
+#对Feign的支持
+feign:
+  sentinel:
+    enabled: true
+
+
+使用Fegin ，启动类上不要忘记加 @EnableFeginClients 注解
+
+服务降级，就是当检测到目标服务不可用时，不用一直消耗资源等待，可以直接返回预期异常，结束调用，避免服务熔断.
+生产测熔断，消费测自动降级
 
 ===========================================================================
 sentinel 的持久化 (流控规则持久化)
+为什么需要持久化？
+因为每次服务重启后，sentinel中配置的流控规则就会消失，需要重新配置。‘
+如果是生产环境? 工作量和重要性难以想象
 
+如何才能将流控规则持久化？
+
+问题1： 持久化在哪？
+只要是个数据存储容器即可 redis,mysql ,文件等。 兼容性更好的肯定是nacos.
+可以将流控规则就想象成一个配置文件。 nacos作为配置中心存储配置文件
+
+问题2:  具体如何操作
+https://spring-cloud-alibaba-group.github.io/github-pages/hoxton/en-us/index.html#_dynamic_data_source_support
+对应官方文档，动态数据源支持
+
+主要还是那几步：引pom ,改yml ,启动类
+
+1： 引入sentinel 数据源pom
+<dependency>
+    <groupId>com.alibaba.csp</groupId>
+    <artifactId>sentinel-datasource-nacos</artifactId>
+</dependency>
+
+2: 改yml 声明 sentinel的数据源
+spring.cloud.sentinel.datasource.ds2.nacos.server-addr=localhost:8848
+spring.cloud.sentinel.datasource.ds2.nacos.data-id=sentinel
+spring.cloud.sentinel.datasource.ds2.nacos.group-id=DEFAULT_GROUP
+spring.cloud.sentinel.datasource.ds2.nacos.data-type=json
+spring.cloud.sentinel.datasource.ds2.nacos.rule-type=degrade
+
+spring:
+  application:
+    name: nacos-payment-provider
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848 #配置Nacos地址
+      transport:
+        port: 8719
+        dashboard: localhost:8080
+    #  datasource:====================
+      datasource:
+         ds1:
+           nacos:
+             server-addr: localhost:8848
+             dataId: nacos-payment-provider
+             groupId: DEFAULT_GROUP
+             data-type: json
+             rule-type: flow
+
+3:nacos 控制台中需要先配置对应的存储文件，用于存储流控规则
+
+4：启动服务，配置流控规则。 关闭服务，规则消失，但是重启后之前配置仍然存在就标识成功
+
+5： 这样有个缺陷就是每次新增规则都要我们自己将流控规则的配置写到配置文件中去
+[
+    {
+         "resource": "/retaLimit/byUrl",
+         "limitApp": "default",
+         "grade":   1,
+         "count":   1,
+         "strategy": 0,
+         "controlBehavior": 0,
+         "clusterMode": false
+    }
+]
+
+思考： 有没有一种方式，我们在sentinel中一配置，就自动更新到nacos中去
+https://blog.csdn.net/LSY_CSDN_/article/details/105114573
+https://www.imooc.com/article/289464 (重点参考)
+
+核心思路：《Sentinel 控制台》提供DynamicRulePublisher 和DynamicRuleProvider接口用于实现应用维度的规则推送和拉取
+Sentinel 提供应用维度规则推送的示例页面（/v2/flow），用户改造控制台对接配置中心后可直接通过 v2 页面推送规则至配置中心。
+说人话就是： 通过修改sentinel控制台的对接的配置中心，可以实现通过DynamicRulePublisher 和DynamicRuleProvider接口 将规则推送给nacos
+
+对于流控规则、降级规则、系统规则、授权规则、热点规则等5种数据规则，后台修改都是一个思路。
+1:创建对应的实体类
+2:实现DynamicRulePublisher 和DynamicRuleProvider接口，并指定接口传递对应的5种数据规则的实体的集合
+3:分别重写对应的push、getRules方法，方法核心就是将数据推送到nacos中或从nacos中获取数据
+
+在sentinel控制台源码中向nacos推送数据需要注意：
+1:sentinel控制台读取的数据规则格式与sentinel在微服务中的客户端获取的数据规则格式不同
+因此在nacos中一种数据规则存储2个dataId的配置文件，
+一个是让sentinel控制台读取的，一个是让sentinel微服务中客户端读取的。两个配置文件中配置的数据规则是一致的。
+
+2:sentinel微服务中的客户端会根据配置文件中配置的nacos中的数据文件进行获取并监听配置是否发生变化，
+如果发生变化就会自动获取最新数据规则。
+
+https://github.com/eacdy/Sentinel-Dashboard-Nacos/releases/tag/v1.6.2-NACOS
+
+尝试下载下来，看自己能不能复现。
 
 
 
