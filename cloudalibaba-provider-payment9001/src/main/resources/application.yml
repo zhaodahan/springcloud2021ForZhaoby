@@ -26,13 +26,39 @@ spring:
         port: 8719
         dashboard: localhost:8080
       datasource:
-         ds1:
-           nacos:
-             server-addr: localhost:8848
-             dataId: nacos-payment-provider
-             groupId: DEFAULT_GROUP
-             data-type: json
-             rule-type: degrade
+          # 名称随意
+        flow:
+            nacos:
+              server-addr: localhost:8848
+              dataId: ${spring.application.name}-flow-rules
+              groupId: SENTINEL_GROUP
+              # 规则类型，取值见：
+              # org.springframework.cloud.alibaba.sentinel.datasource.RuleType
+              rule-type: flow
+        degrade:
+            nacos:
+              server-addr: localhost:8848
+              dataId: ${spring.application.name}-degrade-rules
+              groupId: SENTINEL_GROUP
+              rule-type: degrade
+        system:
+            nacos:
+              server-addr: localhost:8848
+              dataId: ${spring.application.name}-system-rules
+              groupId: SENTINEL_GROUP
+              rule-type: system
+        authority:
+            nacos:
+              server-addr: localhost:8848
+              dataId: ${spring.application.name}-authority-rules
+              groupId: SENTINEL_GROUP
+              rule-type: authority
+        param-flow:
+            nacos:
+              server-addr: localhost:8848
+              dataId: ${spring.application.name}-param-flow-rules
+              groupId: SENTINEL_GROUP
+              rule-type: param-flow
 
 #  spring.cloud.sentinel.datasource.ds2.nacos.server-addr=localhost:8848
 #  spring.cloud.sentinel.datasource.ds2.nacos.data-id=sentinel

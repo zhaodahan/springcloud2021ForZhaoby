@@ -559,14 +559,38 @@ spring:
 https://blog.csdn.net/LSY_CSDN_/article/details/105114573
 https://www.imooc.com/article/289464 (重点参考)
 
-核心思路：《Sentinel 控制台》提供DynamicRulePublisher 和DynamicRuleProvider接口用于实现应用维度的规则推送和拉取
+核心思路：《Alibaba Sentinel 控制台》提供DynamicRulePublisher 和DynamicRuleProvider接口用于实现应用维度的规则推送和拉取
 Sentinel 提供应用维度规则推送的示例页面（/v2/flow），用户改造控制台对接配置中心后可直接通过 v2 页面推送规则至配置中心。
-说人话就是： 通过修改sentinel控制台的对接的配置中心，可以实现通过DynamicRulePublisher 和DynamicRuleProvider接口 将规则推送给nacos
+说人话就是： 只要通过修改和实现sentinel控制台的DynamicRulePublisher 和DynamicRuleProvider接口 可以实现将规则推送给nacos
 
 对于流控规则、降级规则、系统规则、授权规则、热点规则等5种数据规则，后台修改都是一个思路。
-1:创建对应的实体类
+1:数据传输对应的实体类 (官方有提供package com.alibaba.csp.sentinel.dashboard.datasource.entity.rule;)
 2:实现DynamicRulePublisher 和DynamicRuleProvider接口，并指定接口传递对应的5种数据规则的实体的集合
+DynamicRuleProvider：从Nacos上读取配置
+DynamicRulePublisher：将规则推送到Nacos上
+(test/java/com/alibaba/csp/sentinel/dashboard/rule/nacos目录 下也有案例)
+这里需要注意：DynamicRulePublisher 和DynamicRuleProvider接口用于实现《应用维度》的规则推送和拉取
+
+@Component("flowRuleNacosPublisher")
+public class FlowRuleNacosPublisher implements DynamicRulePublisher<List<FlowRuleEntity>> {
+    @Autowired
+    private ConfigService configService;
+
+    //这里DynamicRulePublisher 和DynamicRuleProvider接口用于实现《应用维度》的规则推送和拉取
+    //所以这里需要参数app
+    @Override
+    public void publish(String app, List<FlowRuleEntity> rules) throws Exception {
+        NacosConfigUtil.setRuleStringToNacos(
+            this.configService,
+            app,
+            NacosConfigUtil.FLOW_DATA_ID_POSTFIX,
+            rules
+        );
+    }
+}
+
 3:分别重写对应的push、getRules方法，方法核心就是将数据推送到nacos中或从nacos中获取数据
+
 
 在sentinel控制台源码中向nacos推送数据需要注意：
 1:sentinel控制台读取的数据规则格式与sentinel在微服务中的客户端获取的数据规则格式不同
@@ -579,6 +603,135 @@ Sentinel 提供应用维度规则推送的示例页面（/v2/flow），用户改
 https://github.com/eacdy/Sentinel-Dashboard-Nacos/releases/tag/v1.6.2-NACOS
 
 尝试下载下来，看自己能不能复现。
+
+使用上面下载的dashboard 确实可以实现自动通知存储。
+
+重点在于改造dashboard:
+思考： dashboard 改造的重点和原理是什么？
+
+在大神的基础上进行优化；
+https://blog.csdn.net/LSY_CSDN_/article/details/105114573
+1：簇点链路中加的 ，直接加到流控——nacos 中， 目前是直接加到流控内存中
+
+
+==========================================================
+SpringCloud Alibaba Seata处理分布式事务
+
+一次业务操作需要跨多个数据源或需要跨多个系统进行远程调用，传统的事务就无法保证数据的一致性了
+每个服务内部的数据一致性由本地事务保证，但是全局的数据一致就无法保证
+就会产生分布式事务问题
+
+SpringCloud Alibaba 就提出了Seata 来解决这个问题
+
+整体机制: 都是二阶段提交
+
+
+Seata 将为用户提供了 AT、TCC、SAGA 和 XA 事务模式
+AT 模式 :
+一阶段：业务数据和回滚日志记录在同一个本地事务中提交，释放本地锁和连接资源。
+二阶段：
+    提交异步化，非常快速地完成。
+    回滚通过一阶段的回滚日志进行反向补偿。
+(
+第一阶段就是 分布式事务中，各个事务去执行自己的本地事务
+就是针对要修改的数据有两个锁，一个是全局事务的锁(标志——用来判断全局事务是否回滚) ，一个是本地的锁。
+每个本地事务都先执行，然后虚拟提交。并在数据库中记录下业务数据，和回滚日志
+
+第二阶段： 就是统计每个本地事务的情况：
+如果每个本地事务都成功，就统一提交
+如果有一个子分支事务没有提交就通知各个分支根据自己本地的回滚日志回滚。
+)
+
+写隔离：Seata 多个分支操作同一个表是如何避免 “脏写” 的。 避免并发修改提交。
+
+事务在针对一个表进行操作的时候 会先获取本地锁(避免 “并发”)
+然后是一个分布式事务有一个全局锁，即当前分布式事务中的分支同一个时刻针对某一个表只能由一个分支来操作(提交更新)。
+即在分布式事务中，只有同时获取到本地锁和全局锁，才能对某本表的修改进行提交，入股取锁超时，本地事务回滚。
+==========================================
+以一个示例来说明：两个全局事务 tx1 和 tx2，分别对 a 表的 m 字段进行更新操作，m 的初始值 1000。
+1：tx1 先开始，开启本地事务，拿到本地锁，更新操作 m = 1000 - 100 = 900。
+2：tx1 本地事务提交前，先拿到该记录的 全局锁 ，本地提交释放本地锁。
+3: tx2 后开始，开启本地事务，拿到本地锁，更新操作 m = 900 - 100 = 800。
+4: tx2 本地事务提交前，尝试拿该记录的 全局锁
+5: tx1 全局提交前，该记录的全局锁被 tx1 持有，tx2 需要重试等待 全局锁 。
+6: tx1 二阶段全局提交成功 则释放 全局锁 。tx2 拿到 全局锁 提交本地事务。
+---
+7: tx1 的二阶段提交失败，则全局回滚，则 tx1 需要重新获取该数据的本地锁，进行反向补偿的更新操作，实现分支的回滚。
+8：tx2 仍在等待该数据的 全局锁 去提交事务，同时持有本地锁。
+9：tx1 无法获取本地锁，分支回滚会失败。分支的回滚会一直重试
+10：tx2 的 全局锁 等锁超时，放弃 全局锁 并回滚本地事务释放本地锁
+11：tx1 的分支回滚最终成功。
+因为整个过程 全局锁 在 tx1 结束前一直是被 tx1 持有的，所以不会发生 脏写 的问题
+===========================================
+
+读隔离: 如何避免脏读？
+
+在数据库本地事务隔离级别 读已提交（Read Committed） 或以上的基础上，
+Seata（AT 模式）出于总体性能上的考虑，的默认全局隔离级别是 读未提交（Read Uncommitted） 容易导致脏读，什么都不能保证。
+虽然有并发读，但是本地读安全。 多个读要求并没有写 安全性那么高
+mysql数默认的事务处理级别就是【REPEATABLE-READ】，也就是可重复读
+
+一阶段 工作机制：========================================================================
+1：分支事务执行sql 解析 SQL：得到 SQL 的类型（UPDATE），表（product），条件（where name = 'TXC'）等相关的信息
+2: 查询处执行sql 前，当条记录的镜像值。select id, name, since from product where name = 'TXC';
+3：执行业务 SQL：更新这条记录的 name 为 'GTS'。
+4：查询后镜像 (执行了业务sql后当前记录的镜像)：根据前镜像的结果，通过 主键 定位数据。
+   select id, name, since from product where id = 1;
+5：插入回滚日志：把前后镜像数据以及业务 SQL 相关的信息组成一条回滚日志记录，插入到 UNDO_LOG 表中。
+6：提交前，向 TC 注册分支：申请 product 表中，主键值等于 1 的记录的 全局锁 。
+7：本地事务提交：业务数据的更新和前面步骤中生成的 UNDO LOG 一并提交。
+8：将本地事务提交的结果上报给 TC。
+
+二阶段工作机制：========================================================================
+
+二阶段提交================
+1：收到 TC 的分支提交请求，把请求放入一个异步任务的队列中，马上返回提交成功的结果给 TC
+2：异步任务阶段的分支提交请求将异步和批量地删除相应 UNDO LOG 记录。
+
+二阶段回滚================
+收到 TC 的分支回滚请求，开启一个本地事务，执行如下操作。
+1：通过 全局事务id XID 和 分支ID  Branch ID 查找到相应的 UNDO LOG 记录。
+2：数据校验：拿 UNDO LOG 中的后镜与当前数据进行比较， (这就是生成后镜像的作用)
+          如果有不同，说明数据被当前全局事务之外的动作做了修改。这种情况，需要根据配置策略来做处理
+
+3：根据 UNDO LOG 中的前镜像和业务 SQL 的相关信息生成并执行回滚的语句：
+4：提交本地事务。并把本地事务的执行结果（即分支事务回滚的结果）上报给 TC。
+
+二阶段工作机制：========================================================================
+
+AT 模式（基础）基于 支持本地 ACID 事务 的 关系型数据库
+相应的，TCC 模式，不依赖于底层数据资源的本地事务支持。 是指支持把 自定义 的分支事务纳入到全局事务的管理中。
+就是需要自定义回滚和提交逻辑。
+Saga模式是SEATA提供的长事务解决方案。
+长事务：在Saga模式中，业务流程中每个参与者都直接提交本地事务，当出现某一个参与者失败则补偿前面已经成功的参与者。
+      一阶段正向服务和二阶段补偿服务都由业务开发实现
+适用场景：业务流程长、业务流程多。参与者包含其它公司或遗留系统服务，无法提供 TCC 模式要求的三个接口
+优势：一阶段提交本地事务，无锁，高性能。
+     事件驱动架构，参与者可异步执行，高吞吐
+     补偿服务易于实现
+缺点：
+    不保证隔离性
+
+
+
+原理是什么？ 1+3
+1： 每个分布式事务都有一个全局分布式事务ID；
+三组件：
+
+TM： TM (Transaction Manager) - 事务管理器
+    定义全局事务的范围：开始全局事务、提交或回滚全局事务。
+    统一全局：行军的统帅，教室的班主任
+
+TC: TC (Transaction Coordinator) - 事务协调者
+    维护全局和分支事务的状态，驱动全局事务提交或回滚。
+    顾名思义：协调者。 行军时的通信兵，负责统计各个分支的情况，并报告给统帅
+
+RM: RM (Resource Manager) - 资源管理器
+    管理分支事务处理的资源，与TC交谈以注册分支事务和报告分支事务的状态，并驱动分支事务提交或回滚
+    注册分布式事务分支，每一个分支对应一个RM
+
+
+如何使用？
 
 
 
