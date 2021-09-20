@@ -4,9 +4,32 @@ server:
 spring:
   application:
     name: nacos-order-consumer
-
-#    猜想即使是消费者也需要先注册到那nacos 注册中心处
+    #    猜想即使是消费者也需要先注册到那nacos 注册中心处
   cloud:
-    nacos:
-      discovery:
-        server-addr: localhost:8848 #配置Nacos地址
+      nacos:
+        discovery:
+          server-addr: localhost:8848 #配置Nacos地址
+      alibaba:
+        seata:
+          #自定义事务组名称需要与seata-server中的对应
+          tx-service-group: zhaoby_tx_group
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/order?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
+    username: root
+    password: root
+
+
+
+#mybatis映射配置 配置sql文件地址
+mybatis:
+  mapper-locations: classpath:mapping/*.xml
+  type-aliases-package: com.atiguigu.springCloud.entities
+
+#showSql 配置sql 日志输出
+logging:
+  level:
+    com:
+      atiguigu:
+        springCloud:
+          dao : debug

@@ -627,7 +627,7 @@ SpringCloud Alibaba 就提出了Seata 来解决这个问题
 
 
 Seata 将为用户提供了 AT、TCC、SAGA 和 XA 事务模式
-AT 模式 :
+AT 模式  (默认是AT 模式):
 一阶段：业务数据和回滚日志记录在同一个本地事务中提交，释放本地锁和连接资源。
 二阶段：
     提交异步化，非常快速地完成。
@@ -715,23 +715,200 @@ Saga模式是SEATA提供的长事务解决方案。
 
 
 原理是什么？ 1+3
-1： 每个分布式事务都有一个全局分布式事务ID；
+1： 每个分布式事务都有一个全局分布式事务ID； 唯一标识。
+    在分布式系统中存在多个子分支(子数据库)， 只要我们具有同一个XID,我么就属于同一个分布式事务
+
+2: XID 会在微服务调用链路的上下文中传播
+
+
+
 三组件：
 
 TM： TM (Transaction Manager) - 事务管理器
     定义全局事务的范围：开始全局事务、提交或回滚全局事务。
-    统一全局：行军的统帅，教室的班主任
+    统一全局：行军的统帅，教室的班主任。 创建和开启分步事务，并生成全局事务id .
+    TM 告诉TC 开启了一个分布式事务，并将XID 传给他，让TC去号召学生。
+    (标记了@GlobalTransactional 注解的分布式事务发起方)
 
 TC: TC (Transaction Coordinator) - 事务协调者
     维护全局和分支事务的状态，驱动全局事务提交或回滚。
-    顾名思义：协调者。 行军时的通信兵，负责统计各个分支的情况，并报告给统帅
+    顾名思义：协调者。 行军时的通信兵，负责统计各个分支的情况，并报告给统帅。 班级中的班长。 老师与学生沟通的桥梁
+    TM 只总领大觉，具体细则的事务还是班长负责，负责收作业
+    TC 负责传递TM 的决议。TM 向TC 发起针对XID的提交与回滚。TC 则调度XID下的分支事务RM完成提交和回滚
+    (他就是我们的seata 服务器)
 
 RM: RM (Resource Manager) - 资源管理器
     管理分支事务处理的资源，与TC交谈以注册分支事务和报告分支事务的状态，并驱动分支事务提交或回滚
-    注册分布式事务分支，每一个分支对应一个RM
-
+    注册分布式事务分支，每一个分支对应一个RM (可以简要理解为数据库)
+    RM 学生, 负责将作业交给班长TC,所以RM 是向TC 注册分支事务。
+    (每个RM  数据库都要有自己的undo 日志表，用于本数据库的回滚日志记录——事务的参与方)
 
 如何使用？
+两个注解：Spring 本地@Transactional
+        全局@GlobalTransactional (只需要在是业务方法上加这个注解即可)
+
+如何实际来验证？ 准备两个微服务， 分别操作不同数据库，来模拟分布式数据库。
+
+1: 需要准备好TC (seata server )
+下载seata server  (新版的配置文件大部分存放在GitHub上 )
+
+https://blog.csdn.net/weixin_43831049/article/details/117446071
+配置seata server : 主要修改：自定义事务组名称+事务日志存储模式为db+数据库连接信息
+配置三点： 直接更改file.conf.example
+1：seata server 日志的默认存储方式是文件，我们需要需要改为存储到mysql 数据库
+         file.conf ->store模块： mode = "db" ，然后配置数据库链接
+         建立对应数据库 https://github.com/seata/seata/blob/develop/script/server/db/mysql.sql
+
+2：seata server 默认注册也是文件，我们需要将其注册到nacos 中
+             registry.conf
+3：seata 最主要的配置是 分布式事务的分组名 -》自定义事务组名称
+         file.conf ->service模块：vgroup_mapping.my_test_tx_group = "fsp_tx_group"
+         (新版1.4.2 本地没找到配置service 模块 ? 猜测：新版本是否已经不需要配置了？ 先跳过)
+         没有也可以启动。 不知道后续是否有影响==
+
+         service {
+           #transaction service group mapping
+           vgroupMapping.my_test_tx_group = "default"
+           #only support when registry.type=file, please don't set multiple addresses
+           default.grouplist = "127.0.0.1:8091"
+           #degrade, current not support
+           enableDegrade = false
+           #disable seata
+           disableGlobalTransaction = false
+         }
+
+第一步： 先启动seata  service
+
+第二部： 准备业务数据库 和业务服务
+
+order 调用payment ,各自操作一个数据库，操作一张表
+
+先从payment 开始 ，除了业务表以为，还要建立一个undo_log表
+1：建立数据库
+2；单个服务连接和操作数据库
+============================================================
+springboot 整合mybatis
+1: 引入操作数据库的pom
+        <dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-jdbc</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.mybatis.spring.boot</groupId>
+			<artifactId>mybatis-spring-boot-starter</artifactId>
+			<version>1.3.2</version>
+		</dependency>
+
+		<dependency>
+			<groupId>mysql</groupId>
+			<artifactId>mysql-connector-java</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+
+
+2: 配置文件中配置数据源
+
+#配置连接数据库的数据源
+spring:
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/springboot?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC
+    username: root
+    password: 1234
+
+#mybatis映射配置 配置sql文件地址
+mybatis:
+  mapper-locations: classpath:mapping/*.xml
+  type-aliases-package: com.atiguigu.springCloud.entities
+
+#showSql 配置sql 日志输出
+logging:
+  level:
+    com:
+      atiguigu:
+        springCloud:
+                dao : debug
+
+
+
+3：写业务类
+UserMapper 书写： @Mapper 注解
+sql文件书写
+
+service 调用
+
+这里使用IDEA 自动生产
+
+============================================================
+3：在微服务上配置和使用seata.
+
+1:pom 中引入
+       <!--seata-->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
+            <exclusions>
+                <exclusion>
+                    <artifactId>seata-all</artifactId>
+                    <groupId>io.seata</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 这里要引入和seata  server 对应的版本 -->
+         <dependency>
+                    <groupId>io.seata</groupId>
+                    <artifactId>seata-all</artifactId>
+                    <version>1.4.2</version>
+         </dependency>
+2:配置文件
+yml:
+================================================
+spring:
+  application:
+    name: seata-order-service
+  cloud:
+    alibaba:
+      seata:
+        #自定义事务组名称需要与seata-server中的对应
+        tx-service-group: fsp_tx_group
+================================================
+将seata的配置文件拷贝进resource， 作为seata clinet 的配置文件
+file.conf
+registry.conf
+
+
+
+3: 业务代码使用注解
+
+4：启动seata server 再启动微服务
+
+
+=======================================
+问题： 使用新版的seata server  压根起不起
+
+要不替换成0.9，再按照教程试一遍
+
+注意几点：
+1：配置
+spring:
+  application:
+    name: nacos-order-consumer
+    #    猜想即使是消费者也需要先注册到那nacos 注册中心处
+  cloud:
+      nacos:
+        discovery:
+          server-addr: localhost:8848 #配置Nacos地址
+      alibaba:
+        seata:
+          #自定义事务组名称需要与seata-server中的对应
+          tx-service-group: zhaoby_tx_group
+
+只有这个配置对了才能正常启动开启分组
+
+2： 加了注解还是发现不能正常分布式
+所有sql都走DataSourceProxy代理；而DataSourceProxy代理是直接commit代码；
 
 
 
